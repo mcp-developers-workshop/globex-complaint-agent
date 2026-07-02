@@ -4,17 +4,27 @@ import io.quarkus.logging.Log;
 import io.smallrye.mutiny.Uni;
 import io.smallrye.mutiny.infrastructure.Infrastructure;
 import io.vertx.core.json.JsonObject;
+import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import org.eclipse.microprofile.jwt.Claims;
+import org.eclipse.microprofile.jwt.JsonWebToken;
+import org.globex.retail.ai.complaint.service.ComplaintService;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
 @Path("/api/v1")
 public class AgentResource {
+
+    @Inject
+    JsonWebToken jwt;
+
+    @Inject
+    ComplaintService complaintService;
 
     @Path("/request")
     @POST
@@ -26,8 +36,10 @@ public class AgentResource {
         }
         return Uni.createFrom().item(() -> request).emitOn(Infrastructure.getDefaultWorkerPool())
                 .onItem().transform(r -> {
-                    Log.infof("Agent request received: %s", r);
-                    return "success";
+                    String userName = jwt.claim(Claims.preferred_username).orElse("").toString();
+                    Log.infof("Agent request received: %s; userId: %s", r, userName);
+                    JsonObject jsonObject = new JsonObject(r);
+                    return complaintService.process(jsonObject.getString("request"), userName);
                 })
                 .onItem().transform(response -> Response.status(Response.Status.OK)
                         .entity(new JsonObject().put("response", response)
